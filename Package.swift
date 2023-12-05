@@ -4,10 +4,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "OSXScreenBridge",
+    name: "OSXAudioBridge",
     platforms: [.macOS("13.1")],
     products: [
-        .executable(name: "OSXScreenBridgeCLI", targets: ["OSXScreenBridgeCLI"]),
+        .executable(name: "OSXAudioBridgeCLI", targets: ["OSXAudioBridgeCLI"]),
         .library(name: "CaptureEngine", targets: ["CaptureEngine"]),
     ],
     dependencies: [
@@ -18,7 +18,7 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
-            name: "OSXScreenBridgeCLI",
+            name: "OSXAudioBridgeCLI",
             dependencies: [
                 "CaptureEngine",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),

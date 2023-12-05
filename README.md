@@ -1,1 +1,1 @@
-# osx-screen-bridge
+# osx-audio-bridge

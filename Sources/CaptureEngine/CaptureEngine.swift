@@ -13,9 +13,7 @@ public class CaptureEngine: NSObject {
     private let bufferQueue = DispatchQueue(
         label: "AudioBridge.AudioSampleBufferQueue")
 
-    public func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter)
-        async throws
-    {
+    public init(configuration: SCStreamConfiguration, filter: SCContentFilter) throws {
         streamOutput = CaptureEngineStreamOutput()
         streamOutput?.pcmBufferHandler = {
             let arraySize = Int($0.frameLength)
@@ -27,6 +25,9 @@ public class CaptureEngine: NSObject {
         stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
         try stream?.addStreamOutput(
             streamOutput!, type: .audio, sampleHandlerQueue: bufferQueue)
+    }
+
+    public func startCapture() async throws {
         try await stream?.startCapture()
         isCaptureing = true
     }

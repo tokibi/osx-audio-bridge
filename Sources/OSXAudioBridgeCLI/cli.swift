@@ -1,9 +1,9 @@
 import ArgumentParser
-import ScreenCaptureKit
 import CaptureEngine
+import ScreenCaptureKit
 
 @main
-struct OSXScreenBridge: AsyncParsableCommand {
+struct OSXAudioBridge: AsyncParsableCommand {
     mutating func run() async throws {
         try await start()
     }
@@ -42,8 +42,8 @@ struct OSXScreenBridge: AsyncParsableCommand {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         configuration.queueDepth = 5
 
-        let captureEngine = CaptureEngine()
-        try await captureEngine.startCapture(configuration: configuration, filter: filter)
+        let captureEngine = try CaptureEngine(configuration: configuration, filter: filter)
+        try await captureEngine.startCapture()
         try await Task.sleep(nanoseconds: 10 * NSEC_PER_SEC)
         try await captureEngine.stopCapture()
     }
