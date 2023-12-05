@@ -1,4 +1,5 @@
 import AVFAudio
+import Combine
 import Foundation
 import OSLog
 import ScreenCaptureKit
@@ -7,41 +8,57 @@ import ScreenCaptureKit
 public class CaptureEngine: NSObject {
     private let logger = Logger()
 
-    private var isCaptureing = false
-    private var stream: SCStream?
-    private var streamOutput: CaptureEngineStreamOutput?
+    private var isCapturing = false
+    private var stream: SCStream
+    private var streamOutput: CaptureEngineStreamOutput
     private let bufferQueue = DispatchQueue(
         label: "AudioBridge.AudioSampleBufferQueue")
 
+    private let pcmBufferSubject = CurrentValueSubject<AVAudioPCMBuffer?, Never>(nil)
+
     public init(configuration: SCStreamConfiguration, filter: SCContentFilter) throws {
         streamOutput = CaptureEngineStreamOutput()
-        streamOutput?.pcmBufferHandler = {
-            let arraySize = Int($0.frameLength)
-            let data = [Float](
-                UnsafeBufferPointer(start: $0.floatChannelData![0], count: arraySize))
-            print(data)
+        stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+        super.init()
+
+        streamOutput.pcmBufferHandler = { [weak self] in
+            guard let self = self else { return }
+            self.pcmBufferSubject.send($0)
+        }
+        try stream.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: bufferQueue)
+    }
+
+    public func listen() async -> AsyncStream<AVAudioPCMBuffer> {
+        if !isCapturing {
+            await startCapture()
         }
 
-        stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-        try stream?.addStreamOutput(
-            streamOutput!, type: .audio, sampleHandlerQueue: bufferQueue)
+        return AsyncStream { continuation in
+            let cancellable = pcmBufferSubject.sink {
+                guard let buffer = $0 else { return }
+                continuation.yield(buffer)
+            }
+            continuation.onTermination = { _ in
+                cancellable.cancel()
+            }
+        }
     }
 
-    public func startCapture() async throws {
-        try await stream?.startCapture()
-        isCaptureing = true
+    public func startCapture() async {
+        try? await stream.startCapture()
+        isCapturing = true
     }
 
-    public func stopCapture() async throws {
-        try await stream?.stopCapture()
-        isCaptureing = false
+    public func stopCapture() async {
+        try? await stream.stopCapture()
+        isCapturing = false
     }
 
     /// - Tag: UpdateStreamConfiguration
     public func update(configuration: SCStreamConfiguration, filter: SCContentFilter) async {
         do {
-            try await stream?.updateConfiguration(configuration)
-            try await stream?.updateContentFilter(filter)
+            try await stream.updateConfiguration(configuration)
+            try await stream.updateContentFilter(filter)
         } catch {
             logger.error("Failed to update the stream session: \(String(describing: error))")
         }
