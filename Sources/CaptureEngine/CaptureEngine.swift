@@ -11,9 +11,10 @@ public class CaptureEngine: NSObject {
     private var isCapturing = false
     private var stream: SCStream
     private var streamOutput: CaptureEngineStreamOutput
-    private let bufferQueue = DispatchQueue(
-        label: "AudioBridge.AudioSampleBufferQueue")
+    private let bufferQueue = DispatchQueue(label: "AudioBridge.AudioSampleBufferQueue")
 
+    private var subscriberCount = 0
+    private let counterQueue = DispatchQueue(label: "AudioBridge.SubscriberCounterQueue")
     private let pcmBufferSubject = PassthroughSubject<AVAudioPCMBuffer, Never>()
 
     public init(configuration: SCStreamConfiguration, filter: SCContentFilter) throws {
@@ -22,8 +23,7 @@ public class CaptureEngine: NSObject {
         super.init()
 
         streamOutput.pcmBufferHandler = { [weak self] in
-            guard let self = self else { return }
-            self.pcmBufferSubject.send($0)
+            self?.pcmBufferSubject.send($0)
         }
         try stream.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: bufferQueue)
     }
@@ -33,24 +33,54 @@ public class CaptureEngine: NSObject {
             await startCapture()
         }
 
+        incrimentSubscriberCount()
+
         return AsyncStream { continuation in
             let cancellable = pcmBufferSubject.sink {
                 continuation.yield($0)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 cancellable.cancel()
+                self?.handleUnsubscription()
             }
         }
     }
 
+    private func handleUnsubscription() {
+        decrimentSubscriberCount()
+        counterQueue.sync {
+            if self.subscriberCount < 1 {
+                Task {
+                    await stopCapture()
+                }
+            }
+        }
+    }
+
+    private func incrimentSubscriberCount() {
+        counterQueue.sync { subscriberCount += 1 }
+    }
+
+    private func decrimentSubscriberCount() {
+        counterQueue.sync { subscriberCount -= 1 }
+    }
+
     private func startCapture() async {
-        try? await stream.startCapture()
-        isCapturing = true
+        do {
+            try await stream.startCapture()
+            isCapturing = true
+        } catch {
+            logger.error("Failed to start capture: \(String(describing: error))")
+        }
     }
 
     public func stopCapture() async {
-        try? await stream.stopCapture()
-        isCapturing = false
+        do {
+            try await stream.stopCapture()
+            isCapturing = false
+        } catch {
+            logger.error("Failed to stop capture: \(String(describing: error))")
+        }
     }
 
     /// - Tag: UpdateStreamConfiguration
