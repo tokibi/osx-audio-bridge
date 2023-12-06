@@ -4,7 +4,7 @@ import Foundation
 import OSLog
 import ScreenCaptureKit
 
-/// An object that wraps an instance of `SCStream`, and returns its results as an `AsyncThrowingStream`.
+/// An object that wraps an instance of `SCStream`, and returns its results as an `AsyncStream`.
 public class CaptureEngine: NSObject {
     private let logger = Logger()
 
@@ -14,7 +14,7 @@ public class CaptureEngine: NSObject {
     private let bufferQueue = DispatchQueue(
         label: "AudioBridge.AudioSampleBufferQueue")
 
-    private let pcmBufferSubject = CurrentValueSubject<AVAudioPCMBuffer?, Never>(nil)
+    private let pcmBufferSubject = PassthroughSubject<AVAudioPCMBuffer, Never>()
 
     public init(configuration: SCStreamConfiguration, filter: SCContentFilter) throws {
         streamOutput = CaptureEngineStreamOutput()
@@ -35,8 +35,7 @@ public class CaptureEngine: NSObject {
 
         return AsyncStream { continuation in
             let cancellable = pcmBufferSubject.sink {
-                guard let buffer = $0 else { return }
-                continuation.yield(buffer)
+                continuation.yield($0)
             }
             continuation.onTermination = { _ in
                 cancellable.cancel()
@@ -44,7 +43,7 @@ public class CaptureEngine: NSObject {
         }
     }
 
-    public func startCapture() async {
+    private func startCapture() async {
         try? await stream.startCapture()
         isCapturing = true
     }
