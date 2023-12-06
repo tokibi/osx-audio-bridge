@@ -43,8 +43,12 @@ struct OSXAudioBridge: AsyncParsableCommand {
         configuration.queueDepth = 5
 
         let captureEngine = try CaptureEngine(configuration: configuration, filter: filter)
-        try await captureEngine.startCapture()
-        try await Task.sleep(nanoseconds: 10 * NSEC_PER_SEC)
-        try await captureEngine.stopCapture()
+
+        for await buffer in await captureEngine.listen() {
+            let arraySize = Int(buffer.frameLength)
+            let data = [Float](
+                UnsafeBufferPointer(start: buffer.floatChannelData![0], count: arraySize))
+            print(data)
+        }
     }
 }

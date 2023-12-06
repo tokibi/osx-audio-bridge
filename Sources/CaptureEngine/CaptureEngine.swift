@@ -1,47 +1,93 @@
 import AVFAudio
+import Combine
 import Foundation
 import OSLog
 import ScreenCaptureKit
 
-/// An object that wraps an instance of `SCStream`, and returns its results as an `AsyncThrowingStream`.
+/// An object that wraps an instance of `SCStream`, and returns its results as an `AsyncStream`.
 public class CaptureEngine: NSObject {
     private let logger = Logger()
 
-    private var isCaptureing = false
-    private var stream: SCStream?
-    private var streamOutput: CaptureEngineStreamOutput?
-    private let bufferQueue = DispatchQueue(
-        label: "AudioBridge.AudioSampleBufferQueue")
+    private var isCapturing = false
+    private var stream: SCStream
+    private var streamOutput: CaptureEngineStreamOutput
+    private let bufferQueue = DispatchQueue(label: "AudioBridge.AudioSampleBufferQueue")
+
+    private var subscriberCount = 0
+    private let counterQueue = DispatchQueue(label: "AudioBridge.SubscriberCounterQueue")
+    private let pcmBufferSubject = PassthroughSubject<AVAudioPCMBuffer, Never>()
 
     public init(configuration: SCStreamConfiguration, filter: SCContentFilter) throws {
         streamOutput = CaptureEngineStreamOutput()
-        streamOutput?.pcmBufferHandler = {
-            let arraySize = Int($0.frameLength)
-            let data = [Float](
-                UnsafeBufferPointer(start: $0.floatChannelData![0], count: arraySize))
-            print(data)
+        stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+        super.init()
+
+        streamOutput.pcmBufferHandler = { [weak self] in
+            self?.pcmBufferSubject.send($0)
+        }
+        try stream.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: bufferQueue)
+    }
+
+    public func listen() async -> AsyncStream<AVAudioPCMBuffer> {
+        if !isCapturing {
+            await startCapture()
         }
 
-        stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-        try stream?.addStreamOutput(
-            streamOutput!, type: .audio, sampleHandlerQueue: bufferQueue)
+        incrimentSubscriberCount()
+
+        return AsyncStream { continuation in
+            let cancellable = pcmBufferSubject.sink {
+                continuation.yield($0)
+            }
+            continuation.onTermination = { [weak self] _ in
+                cancellable.cancel()
+                self?.handleUnsubscription()
+            }
+        }
     }
 
-    public func startCapture() async throws {
-        try await stream?.startCapture()
-        isCaptureing = true
+    private func handleUnsubscription() {
+        decrimentSubscriberCount()
+        counterQueue.sync {
+            if self.subscriberCount < 1 {
+                Task {
+                    await stopCapture()
+                }
+            }
+        }
     }
 
-    public func stopCapture() async throws {
-        try await stream?.stopCapture()
-        isCaptureing = false
+    private func incrimentSubscriberCount() {
+        counterQueue.sync { subscriberCount += 1 }
+    }
+
+    private func decrimentSubscriberCount() {
+        counterQueue.sync { subscriberCount -= 1 }
+    }
+
+    private func startCapture() async {
+        do {
+            try await stream.startCapture()
+            isCapturing = true
+        } catch {
+            logger.error("Failed to start capture: \(String(describing: error))")
+        }
+    }
+
+    public func stopCapture() async {
+        do {
+            try await stream.stopCapture()
+            isCapturing = false
+        } catch {
+            logger.error("Failed to stop capture: \(String(describing: error))")
+        }
     }
 
     /// - Tag: UpdateStreamConfiguration
     public func update(configuration: SCStreamConfiguration, filter: SCContentFilter) async {
         do {
-            try await stream?.updateConfiguration(configuration)
-            try await stream?.updateContentFilter(filter)
+            try await stream.updateConfiguration(configuration)
+            try await stream.updateContentFilter(filter)
         } catch {
             logger.error("Failed to update the stream session: \(String(describing: error))")
         }
