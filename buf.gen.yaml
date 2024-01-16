@@ -1,0 +1,11 @@
+# buf.gen.yaml
+version: v1
+managed:
+  enabled: true
+plugins:
+  - plugin: buf.build/grpc/swift:v1.21.0
+    out: Sources/CaptureServer/Model
+  # dependencies
+  - plugin: buf.build/apple/swift
+    out: Sources/CaptureServer/Model
+

@@ -1,13 +1,20 @@
 import AVFoundation
 import ArgumentParser
 import CaptureEngine
+import CaptureServer
 import Foundation
+import GRPC
 import ScreenCaptureKit
 
 @main
 struct OSXAudioBridge: AsyncParsableCommand {
     mutating func run() async throws {
-        try await start()
+        try await startServer()
+    }
+
+    func startServer() async throws {
+        let server = AudioStreamServer(port: 1234)
+        try await server.run()
     }
 
     func filterChromeWindows(content: SCShareableContent) async throws -> [SCWindow] {
@@ -20,7 +27,7 @@ struct OSXAudioBridge: AsyncParsableCommand {
         return windows
     }
 
-    func start() async throws {
+    func startCapture() async throws {
         let availableContent = try await SCShareableContent.current
         let display = availableContent.displays.first!
         let windows = try await filterChromeWindows(content: availableContent)
