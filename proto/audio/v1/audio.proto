@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package audio.v1;
+
+service AudioService {
+  rpc StreamAudio(StreamAudioRequest) returns (stream StreamAudioResponse) {}
+}
+
+message StreamAudioRequest {
+  AudioType audio_type = 1;
+}
+
+enum AudioType {
+  AUDIO_TYPE_UNSPECIFIED = 0;
+  AUDIO_TYPE_INPUT = 1;
+  AUDIO_TYPE_OUTPUT = 2;
+}
+
+message StreamAudioResponse {
+  // PCM chunk
+  repeated float data = 1;
+
+  int32 sample_rate = 2;
+  int32 bit_depth = 3;
+  int32 channels = 4;
+}
