@@ -1,4 +1,5 @@
 version: v1
+name: buf.build/tokibi/osx-audio-bridge
 breaking:
   use:
     - FILE
